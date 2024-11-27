@@ -18,7 +18,7 @@ const FaceExpressionApp = () => {
 
   useEffect(() => {
     const loadModels = async () => {
-      const MODEL_URL = '/models' // Coloca los modelos en "public/models"
+      const MODEL_URL = '/models'
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)
       await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
     }
@@ -34,7 +34,6 @@ const FaceExpressionApp = () => {
 
     loadModels().then(startVideo)
   }, [])
-
   const handleVideoPlay = async () => {
     const canvas = faceapi.createCanvasFromMedia(videoRef.current)
     canvasRef.current.appendChild(canvas)
@@ -43,27 +42,48 @@ const FaceExpressionApp = () => {
       height: videoRef.current.videoHeight
     }
     faceapi.matchDimensions(canvas, displaySize)
-
+  
     const interval = setInterval(async () => {
       const detections = await faceapi
         .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
         .withFaceExpressions()
+  
+      // Limpia el canvas antes de redibujar
+      const context = canvas.getContext('2d')
+      context.clearRect(0, 0, canvas.width, canvas.height)
+  
       if (detections.length > 0) {
-        setExpressions(detections[0].expressions)
+        // Redimensiona las detecciones a las dimensiones del video
+        const resizedDetections = faceapi.resizeResults(detections, displaySize)
+  
+        // Dibuja los cuadros alrededor de las caras
+        faceapi.draw.drawDetections(canvas, resizedDetections)
+  
+        // Dibuja la emoción detectada más fuerte
+        resizedDetections.forEach((detection) => {
+          const { expressions } = detection
+          const dominantEmotion = Object.entries(expressions).sort(
+            ([, valueA], [, valueB]) => valueB - valueA
+          )[0] // La emoción más fuerte
+  
+          const { box } = detection.detection
+          const text = `${translatedExpressions[dominantEmotion[0]]}: ${(dominantEmotion[1] * 100).toFixed(2)}%`
+  
+          // Dibuja el texto sobre la cara
+          context.fillStyle = 'blue'
+          context.font = '18px Arial'
+          context.fillText(
+            text,
+            box.x + 100,
+            box.y - 10 // Muestra el texto un poco arriba del cuadro
+          )
+        })
       }
-
-      // Limpia el lienzo antes de redibujar
-      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
-
-      // Redimensiona las detecciones a las dimensiones del video
-      const resizedDetections = faceapi.resizeResults(detections, displaySize)
-
-      // Dibuja los cuadros alrededor de las caras
-      faceapi.draw.drawDetections(canvas, resizedDetections)
     }, 100)
-
+  
     return () => clearInterval(interval)
   }
+
   return (
     <div
       style={{
@@ -106,35 +126,20 @@ const FaceExpressionApp = () => {
           ref={videoRef}
           autoPlay
           muted
-          width='800'
-          height='600'
+          width='1200'
+          height='800'
           onPlay={handleVideoPlay}
+          style={{ position: 'absolute',
+            top: '300px',
+          }}
+
         />
         <div
           ref={canvasRef}
-          style={{ position: 'absolute' }}
+          style={{ position: 'absolute',
+            top: '400px',
+           }}
         />
-        <div style={{
-          fontSize: '2em',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '1em',
-          width: '50%',
-          justifyContent: 'center',
-          fontWeight: 'bold'
-        }}>
-          {expressions &&
-            Object.entries(expressions).map(([expression, value]) => (
-              <div style={{
-                backgroundColor: '#020078',
-                padding: '1em',
-                borderRadius: '0.5em',
-                textAlign: 'center'
-              }} key={expression}>
-                {translatedExpressions[expression]}: {(value * 100).toFixed(2)}%
-              </div>
-            ))}
-        </div>
       </div>
     </div>
   )
